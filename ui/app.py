@@ -6,13 +6,13 @@ from PyQt5.QtCore import QObject, pyqtSignal
 import threading
 
 AVAILABLE_MODELS = [
-    "nvidia/nemotron-3-super-120b-a12b:free",   # #6 in programming, recommended
-    "qwen/qwen3-coder:free",                     # best coding model
-    "meta-llama/llama-3.3-70b-instruct:free",   # reliable, fast
-    "google/gemma-4-31b-it:free",               # Google, solid
-    "openai/gpt-oss-120b:free",                 # OpenAI open weights
-    "z-ai/glm-4.5-air:free",                    # good instruction following
-    "openrouter/free",                           # fallback
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "qwen/qwen3-coder:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemma-4-31b-it:free",
+    "openai/gpt-oss-120b:free",
+    "z-ai/glm-4.5-air:free",
+    "openrouter/free", # fallback
 ]
 
 class AIWorker(QObject):

@@ -2,24 +2,25 @@ import os
 import re
 
 KEYWORDS = {
-    "tick":       ["clock", "tick", "fps", "framerate", "frame_rate", "cap", "60", "30", "120"],
-    "movement":   ["player", "move", "velocity", "speed", "input", "direction", "dx", "dy"],
-    "render":     ["draw", "render", "blit", "screen", "display", "surface"],
-    "collision":  ["collide", "hitbox", "rect", "overlap", "intersect"],
+    "tick":       ["clock", "tick", "fps", "framerate", "frame_rate"],
+    "movement":   ["player", "move", "velocity", "speed", "input"],
+    "render":     ["draw", "render", "blit", "screen", "display"],
+    "collision":  ["collide", "hitbox", "rect", "overlap"],
     "score":      ["score", "point", "count", "total"],
     "audio":      ["sound", "music", "play", "volume", "mixer"],
-    "input":      ["event", "keydown", "mousebutton", "keyboard", "mouse", "input"],
-    "spawn":      ["spawn", "create", "instantiate", "generate", "enemy", "object"],
+    "input":      ["event", "keydown", "mousebutton", "keyboard", "mouse"],
+    "spawn":      ["spawn", "create", "instantiate", "generate", "enemy"],
     "ui":         ["button", "menu", "label", "text", "font", "hud"],
-    "save":       ["save", "load", "file", "json", "pickle", "read", "write"],
-    "network":    ["socket", "server", "client", "request", "http", "connect"],
+    "save":       ["save", "load", "file", "json", "pickle"],
+    "network":    ["socket", "server", "client", "request", "http"],
     "camera":     ["camera", "viewport", "scroll", "offset"],
     "animation":  ["animation", "frame", "sprite", "sheet"],
     "physics":    ["gravity", "velocity", "acceleration", "friction", "jump"],
-    "shader":     ["shader", "glsl", "hlsl", "material"],
+    "model":      ["model", "fallback", "openrouter", "api", "ai"],
+    "config":     ["config", "settings", "key", "api_key", "setup"],
 }
 
-SUPPORTED_FILE_TYPE = {
+SUPPORTED_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx",
     ".cpp", ".h", ".hpp", ".c",
     ".cs", ".java", ".go", ".rs",
@@ -27,35 +28,52 @@ SUPPORTED_FILE_TYPE = {
     ".lua", ".rb", ".php", ".swift", ".kt"
 }
 
-SKIP_DIRS = {"__pycache__", "node_modules", ".git", "venv", "env", ".venv", "dist", "build"}
+SKIP_DIR_PATTERNS = {
+    "__pycache__", "node_modules", ".git", "venv", "env", ".venv",
+    "dist", "build", "site-packages", "lib", "lib64", "bin",
+    "devscope-env", ".env", "eggs", ".eggs", "htmlcov", ".tox",
+    "migrations", "static", "media"
+}
 
+def _is_skipped_path(path):
+    """Return True if any part of the path is a known library/env folder."""
+    parts = path.replace("\\", "/").split("/")
+    for part in parts:
+        if part.lower() in SKIP_DIR_PATTERNS:
+            return True
+    return False
 
 def find_relevant_files(folder, prompt):
     prompt_lower = prompt.lower()
-
     mentioned_filenames = set(re.findall(r'\b[\w\-]+\.\w+\b', prompt_lower))
 
     all_files = []
     for root, dirs, files in os.walk(folder):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+        dirs[:] = [
+            d for d in dirs
+            if d.lower() not in SKIP_DIR_PATTERNS and not d.startswith(".")
+        ]
+
+        if _is_skipped_path(root):
+            continue
 
         for file in files:
             ext = os.path.splitext(file)[1].lower()
-            if ext not in SUPPORTED_FILE_TYPE:
+            if ext not in SUPPORTED_EXTENSIONS:
                 continue
             all_files.append(os.path.join(root, file))
 
-    exact_matches = []
-    for path in all_files:
-        if os.path.basename(path).lower() in mentioned_filenames:
-            exact_matches.append(path)
-
+    exact_matches = [
+        p for p in all_files
+        if os.path.basename(p).lower() in mentioned_filenames
+    ]
     if exact_matches:
         return exact_matches[:3]
 
     scored = []
     for path in all_files:
-        filename = os.path.basename(path).lower()
+        if _is_skipped_path(path):
+            continue
 
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -64,6 +82,8 @@ def find_relevant_files(folder, prompt):
             continue
 
         score = 0
+        filename = os.path.basename(path).lower()
+        name_no_ext = os.path.splitext(filename)[0]
 
         for key, words in KEYWORDS.items():
             if key in prompt_lower:
@@ -77,7 +97,6 @@ def find_relevant_files(folder, prompt):
             if word in content:
                 score += 0.5
 
-        name_no_ext = os.path.splitext(filename)[0]
         if name_no_ext in prompt_lower:
             score += 5
 
@@ -85,5 +104,4 @@ def find_relevant_files(folder, prompt):
             scored.append((score, path))
 
     scored.sort(reverse=True)
-
     return [path for _, path in scored[:3]]
