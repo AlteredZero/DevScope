@@ -4,7 +4,7 @@ DevScope is an ai powered coding assistant that understands entire project folde
 
 ## Features
 - Project-wide code understanding
-- Run by Gemini AI
+- Run using free models through OpenRouter (meaning it will always be free!)
 - Multi-language support
 
 ## Run
