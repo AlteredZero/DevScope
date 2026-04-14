@@ -1,0 +1,20 @@
+[
+  {
+    "timestamp": "2026-04-14T18:07:42.591986",
+    "project": "C:/Users/topzg/OneDrive/Documents/Click-A-Duck",
+    "prompt": "How to change the game tick speed in main.py from 60 to 120?",
+    "response": "[z-ai/glm-4.5-air:free]\n\nTo change the game tick speed from 60 to 120 in main.py, modify line 1968:\n\n```python\nclock.tick(int(120 * game_data.get(\"globalGameSpeed\", 1)))\n```\n\nThis changes the frame rate from 60 to 120 frames per second, which will make the game run at twice the speed."
+  },
+  {
+    "timestamp": "2026-04-14T18:07:18.546835",
+    "project": "C:/Users/topzg/OneDrive/Documents/Click-A-Duck",
+    "prompt": "How to change the game tick speed in main.py from 60 to 120?",
+    "response": "[nvidia/nemotron-3-super-120b-a12b:free]\n\n- Line 1608: `game_speed = game_data.get(\"globalGameSpeed\", 1)`\n- Line 1610: `if current_time - tick_time >= 1000 / game_speed:`\n- Line 1615: `tick_time += 1000 / game_speed`\n\nThis suggests that game_speed is a multiplier for game logic speed, not render speed. The clock.tick() controls the render FPS."
+  },
+  {
+    "timestamp": "2026-04-14T18:00:14.783374",
+    "project": "C:/Users/topzg/OneDrive/Documents/Click-A-Duck",
+    "prompt": "How to change the game tick speed in main.py from 60 to 120?",
+    "response": "[openai/gpt-oss-120b:free]\n\n**Update the frame\u2011rate caps**\n\n1. **Loading screen** \u2013 change the tick call on line\u202f104:\n```python\n# Old\nglobal_time = clock.tick(60)\n\n# New\nglobal_time = clock.tick(120)\n```\n\n2. **Main game loop** \u2013 change the final `clock.tick` on line\u202f1068:\n```python\n# Old\nclock.tick(int(60 * game_data.get(\"globalGameSpeed\", 1)))\n\n# New\nclock.tick(int(120 * game_data.get(\"globalGameSpeed\", 1)))\n```\n\nThese two modifications raise the target tick speed from 60\u202fFPS to 120\u202fFPS (still respecting any `globalGameSpeed` multiplier)."
+  }
+]
