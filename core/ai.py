@@ -13,16 +13,13 @@ FALLBACK_MODELS = [
 ]
 
 CHANGE_SYSTEM_PROMPT = """You are a code editing assistant. The user wants to make a specific change to their code.
-
 Respond ONLY in this exact format with no other text:
 File: <filename>
 Line: <line number>
 Change: replace `<old code>` with `<new code>`
-
 Output nothing else. No thinking. No explanation. No preamble."""
 
 QUESTION_SYSTEM_PROMPT = """You are DevScope, an expert coding assistant. Answer the user's question directly.
-
 Rules:
 - Start your answer immediately. No preamble.
 - Never say "The user asks..." or "The user wants..." or "Looking at the code..."
@@ -38,7 +35,6 @@ CHANGE_KEYWORDS = [
 
 def is_change_request(prompt):
     prompt_lower = prompt.lower().strip()
-
     question_starters = [
         "what", "why", "how", "when", "where", "which", "who",
         "should", "could", "would", "can", "is ", "are ", "does",
@@ -47,20 +43,14 @@ def is_change_request(prompt):
     for starter in question_starters:
         if prompt_lower.startswith(starter):
             return False
-
     for keyword in CHANGE_KEYWORDS:
         if keyword in prompt_lower:
             return True
-
     return False
 
 def strip_reasoning(text):
-    """Remove reasoning leaks from model output."""
-
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-
     text = re.sub(r'^(Okay|Alright|Sure|Right|So)[,.]?\s*', '', text, flags=re.IGNORECASE)
-
     lines = text.split('\n')
     reasoning_line_patterns = [
         r'the user (asks?|wants?|said|needs?|is asking|is)',
@@ -81,19 +71,14 @@ def strip_reasoning(text):
         r"but (we|i) don't have",
         r"however[,] i don't",
     ]
-
     clean_lines = []
     skip_block = False
-
     for line in lines:
         line_lower = line.lower().strip()
-
         is_reasoning = any(re.search(p, line_lower) for p in reasoning_line_patterns)
-
         if is_reasoning:
             skip_block = True
             continue
-
         if skip_block:
             if line.strip() and not line_lower.startswith(('```', '#')):
                 real_answer_starters = [
@@ -103,18 +88,14 @@ def strip_reasoning(text):
                 ]
                 if any(line_lower.startswith(s) for s in real_answer_starters):
                     skip_block = False
-
         if not skip_block:
             clean_lines.append(line)
-
     result = '\n'.join(clean_lines).strip()
-
     if not result:
         return text.strip()
-
     return result
 
-def _try_model(model, system_prompt, user_message):
+def _try_model(model, system_prompt, user_message, temperature, max_tokens):
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={
@@ -127,26 +108,22 @@ def _try_model(model, system_prompt, user_message):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            "temperature": 0.1,
-            "max_tokens": 500,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         },
         timeout=30
     )
-
     data = response.json()
-
     if "error" in data:
         return False, data["error"]["message"]
-
     content = data["choices"][0]["message"]["content"]
-
     if not content or not content.strip():
         return False, "Empty response"
-
     return True, content.strip()
 
+def ask_ai(prompt, codebase, project_types, model=None,
+           temperature=0.1, max_tokens=500, auto_fallback=True):
 
-def ask_ai(prompt, codebase, project_types, model=None):
     if is_change_request(prompt):
         system_prompt = CHANGE_SYSTEM_PROMPT
         user_message = f"Request: {prompt}\n\nCode:\n{codebase}"
@@ -154,20 +131,22 @@ def ask_ai(prompt, codebase, project_types, model=None):
         system_prompt = QUESTION_SYSTEM_PROMPT
         user_message = f"Question: {prompt}\n\nProject code for context:\n{codebase}"
 
-    models_to_try = []
-    if model and model in FALLBACK_MODELS:
-        idx = FALLBACK_MODELS.index(model)
-        models_to_try = FALLBACK_MODELS[idx:]
-    elif model:
-        models_to_try = [model] + FALLBACK_MODELS
+    if auto_fallback:
+        if model and model in FALLBACK_MODELS:
+            idx = FALLBACK_MODELS.index(model)
+            models_to_try = FALLBACK_MODELS[idx:]
+        elif model:
+            models_to_try = [model] + FALLBACK_MODELS
+        else:
+            models_to_try = FALLBACK_MODELS
     else:
-        models_to_try = FALLBACK_MODELS
+        models_to_try = [model] if model else [FALLBACK_MODELS[0]]
 
     last_error = "All models failed."
 
     for m in models_to_try:
         try:
-            success, result = _try_model(m, system_prompt, user_message)
+            success, result = _try_model(m, system_prompt, user_message, temperature, max_tokens)
             if success:
                 clean = strip_reasoning(result)
                 return f"[{m}]\n\n{clean}"
