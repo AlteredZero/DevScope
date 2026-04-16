@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTextEdit, QFileDialog, QLabel, QComboBox,
-    QTabWidget
+    QTabWidget, QCheckBox, QSlider, QSpinBox,
+    QLineEdit
 )
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, Qt  
 import threading
 
 AVAILABLE_MODELS = [
@@ -16,6 +17,17 @@ AVAILABLE_MODELS = [
     "openrouter/free",
 ]
 
+THEMES = [
+    "Scope - Default",
+    "Dark",
+    "Light",
+    "None",
+]
+
+MODE_DEFAULT = [
+    "Ask",
+    "Edit"
+]
 
 class AIWorker(QObject):
     finished = pyqtSignal(str)
@@ -65,6 +77,7 @@ class DevScopeUi(QWidget):
         self._build_ui()
 
     def _build_ui(self):
+        self.setStyleSheet("* { font-family: 'JetBrains Mono'; font-size: 9pt; }")
         root_layout = QVBoxLayout(self)
 
         model_row = QHBoxLayout()
@@ -76,9 +89,9 @@ class DevScopeUi(QWidget):
         root_layout.addLayout(model_row)
 
         folder_row = QHBoxLayout()
-        self.btn_folder = QPushButton("Select Project Folder")
-        self.btn_folder.clicked.connect(self.select_folder)
-        folder_row.addWidget(self.btn_folder)
+        self.button_folder = QPushButton("Select Project Folder")
+        self.button_folder.clicked.connect(self.select_folder)
+        folder_row.addWidget(self.button_folder)
         self.folder_label = QLabel("No project selected")
         folder_row.addWidget(self.folder_label)
         root_layout.addLayout(folder_row)
@@ -101,16 +114,16 @@ class DevScopeUi(QWidget):
         self.input.setMaximumHeight(100)
         chat_layout.addWidget(self.input)
 
-        btn_row = QHBoxLayout()
-        self.btn_ask = QPushButton("Ask AI")
-        self.btn_ask.clicked.connect(self.run_ai)
-        btn_row.addWidget(self.btn_ask)
+        button_row = QHBoxLayout()
+        self.button_ask = QPushButton("Ask AI")
+        self.button_ask.clicked.connect(self.run_ai)
+        button_row.addWidget(self.button_ask)
 
-        self.btn_apply = QPushButton("Apply Fixes")
-        self.btn_apply.clicked.connect(self.apply_fixes)
-        self.btn_apply.setEnabled(False)
-        btn_row.addWidget(self.btn_apply)
-        chat_layout.addLayout(btn_row)
+        self.button_apply = QPushButton("Apply Fixes")
+        self.button_apply.clicked.connect(self.apply_fixes)
+        self.button_apply.setEnabled(False)
+        button_row.addWidget(self.button_apply)
+        chat_layout.addLayout(button_row)
 
         chat_layout.addWidget(QLabel("AI Response:"))
         self.output = QTextEdit()
@@ -128,15 +141,15 @@ class DevScopeUi(QWidget):
         history_tab = QWidget()
         history_layout = QVBoxLayout(history_tab)
 
-        history_btn_row = QHBoxLayout()
-        btn_load = QPushButton("Load History")
-        btn_load.clicked.connect(self.load_history)
-        history_btn_row.addWidget(btn_load)
+        history_button_row = QHBoxLayout()
+        button_load = QPushButton("Load History")
+        button_load.clicked.connect(self.load_history)
+        history_button_row.addWidget(button_load)
 
-        btn_clear = QPushButton("Clear History")
-        btn_clear.clicked.connect(self.clear_history)
-        history_btn_row.addWidget(btn_clear)
-        history_layout.addLayout(history_btn_row)
+        button_clear = QPushButton("Clear History")
+        button_clear.clicked.connect(self.clear_history)
+        history_button_row.addWidget(button_clear)
+        history_layout.addLayout(history_button_row)
 
         self.history_display = QTextEdit()
         self.history_display.setReadOnly(True)
@@ -144,6 +157,123 @@ class DevScopeUi(QWidget):
         history_layout.addWidget(self.history_display)
 
         self.tabs.addTab(history_tab, "History")
+
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Theme:")
+        settings_button_row.addWidget(lbl_title)
+        self.theme_selector = QComboBox()
+        for t in THEMES:
+            self.theme_selector.addItem(t)
+        settings_button_row.addWidget(self.theme_selector)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Default Model:")
+        settings_button_row.addWidget(lbl_title)
+        self.default_model_selector = QComboBox()
+        for t in AVAILABLE_MODELS:
+            self.default_model_selector.addItem(t)
+        settings_button_row.addWidget(self.default_model_selector)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Temperature:")
+        settings_button_row.addWidget(lbl_title)
+        self.temp_slider = QSlider(Qt.Horizontal)
+        self.temp_slider.setRange(0, 100)
+        self.temp_slider.setValue(10)
+        settings_button_row.addWidget(self.temp_slider)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Max Response Length:")
+        settings_button_row.addWidget(lbl_title)
+        self.max_tokens = QSpinBox()
+        self.max_tokens.setRange(100, 4000)
+        self.max_tokens.setValue(500)
+        settings_button_row.addWidget(self.max_tokens)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Auto-Fallback Toggle:")
+        settings_button_row.addWidget(lbl_title)
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(True)
+        #self.checkbox.stateChanged.connect()
+        settings_button_row.addWidget(self.checkbox)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Mode Default:")
+        settings_button_row.addWidget(lbl_title)
+        self.default_mode_selector = QComboBox()
+        for m in MODE_DEFAULT:
+            self.default_mode_selector.addItem(m)
+        settings_button_row.addWidget(self.default_mode_selector)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Max Files to Scan:")
+        settings_button_row.addWidget(lbl_title)
+        self.max_files = QSpinBox()
+        self.max_files.setRange(1, 100)
+        self.max_files.setValue(10)
+        settings_button_row.addWidget(self.max_files)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("File Types to Include:")
+        settings_button_row.addWidget(lbl_title)
+        self.file_types = QLineEdit()
+        self.file_types.setText(
+            ".py, .js, .ts, .jsx, .tsx, "
+            ".cpp, .h, .hpp, .c, "
+            ".cs, .java, .go, .rs, "
+            ".html, .css, "
+            ".json, .yaml, .yml, .xml, "
+            ".lua, .rb, .php, .swift, .kt, "
+            ".sh, .bat, .ps1, "
+            ".sql, .ini, .cfg, .toml, .env, "
+            ".md"
+        )
+        self.file_types.placeholderText = "e.g: .py, .js, .cpp, .cs"
+        settings_button_row.addWidget(self.file_types)
+        settings_layout.addLayout(settings_button_row)
+        
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Ignore Folders:")
+        settings_button_row.addWidget(lbl_title)
+        self.ignored_files = QLineEdit()
+        self.ignored_files.placeholderText = "node_modules, build, dist"
+        settings_button_row.addWidget(self.ignored_files)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        lbl_title = QLabel("Font Size:")
+        settings_button_row.addWidget(lbl_title)
+        self.font_size = QSpinBox()
+        self.font_size.setRange(8, 32)
+        settings_button_row.addWidget(self.font_size)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_button_row = QHBoxLayout()
+        self.button_reset = QPushButton("Reset Default")
+        #self.button_reset.clicked.connect()
+        settings_button_row.addWidget(self.button_reset)
+        settings_layout.addLayout(settings_button_row)
+
+        settings_layout.addStretch(1)
+
+        self.settings_display = QLabel()
+        self.settings_display.setText("© 2026 Daniil Ovechkin. Built using Python and PyQt5.")
+        self.settings_display.setAlignment(Qt.AlignCenter)
+        settings_layout.addWidget(self.settings_display)
+
+
+        self.tabs.addTab(settings_tab, "Settings")
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
@@ -153,7 +283,7 @@ class DevScopeUi(QWidget):
             self.files_display.clear()
             self.output.clear()
             self.apply_output.clear()
-            self.btn_apply.setEnabled(False)
+            self.button_apply.setEnabled(False)
 
     def run_ai(self):
         if not self.folder:
@@ -168,8 +298,8 @@ class DevScopeUi(QWidget):
         self.output.setText("Thinking...")
         self.apply_output.clear()
         self.files_display.clear()
-        self.btn_ask.setEnabled(False)
-        self.btn_apply.setEnabled(False)
+        self.button_ask.setEnabled(False)
+        self.button_apply.setEnabled(False)
         self.last_response = ""
 
         model = self.model_selector.currentText()
@@ -184,11 +314,11 @@ class DevScopeUi(QWidget):
     def display_result(self, text):
         self.output.setText(text)
         self.last_response = text
-        self.btn_ask.setEnabled(True)
+        self.button_ask.setEnabled(True)
 
         from core.applier import parse_fixes
         fixes = parse_fixes(text)
-        self.btn_apply.setEnabled(len(fixes) > 0)
+        self.button_apply.setEnabled(len(fixes) > 0)
 
         try:
             from core.history import save_exchange
@@ -210,7 +340,7 @@ class DevScopeUi(QWidget):
 
         result = apply_fixes(fixes, self.folder)
         self.apply_output.setText(result)
-        self.btn_apply.setEnabled(False)
+        self.button_apply.setEnabled(False)
 
     def load_history(self):
         from core.history import load_history, format_history_entry
