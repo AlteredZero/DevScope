@@ -4,17 +4,13 @@ from PyQt5.QtWidgets import (
     QTabWidget, QCheckBox, QSlider, QSpinBox,
     QLineEdit
 )
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtCore import QObject, pyqtSignal, Qt, QTimer, QThread
 import threading
 import markdown
 
 AVAILABLE_MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "qwen/qwen3-coder:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-4-31b-it:free",
     "openai/gpt-oss-120b:free",
-    "z-ai/glm-4.5-air:free",
     "openrouter/free",
 ]
 
@@ -85,8 +81,10 @@ DEFAULTS = {
     "theme": "Scope - Default",
     "model": AVAILABLE_MODELS[0],
     "temperature": 10,
-    "max_tokens": 500,
+    "max_tokens": 2000,
     "auto_fallback": True,
+    "openrouter_api": False,
+    "openrouter_api_key": None,
     "mode": "Edit",
     "max_files": 10,
     "file_types": ".py, .js, .ts, .jsx, .tsx, .cpp, .h, .hpp, .c, .cs, .java, .go, .rs, .html, .css, .json, .yaml, .yml, .xml, .lua, .rb, .php, .swift, .kt, .sh, .bat, .ps1, .sql, .ini, .cfg, .toml, .env, .md",
@@ -143,6 +141,17 @@ class AIWorker(QObject):
             self.finished.emit(f"Unexpected error: {str(e)}")
 
 
+class DownloadThread(QThread):
+    progress_update = pyqtSignal(int, str)
+    
+    def run(self):
+        filename = "Calyx-v1.0-7B.gguf"
+        def callback(completed, total):
+            if total > 0:
+                percent = int((completed / total) * 100)
+                self.progress_update.emit(percent, filename)
+
+
 class DevScopeUi(QWidget):
     def __init__(self):
         super().__init__()
@@ -152,6 +161,9 @@ class DevScopeUi(QWidget):
         self.setWindowTitle("DevScope")
         self._build_ui()
         self.apply_theme(DEFAULTS["theme"])
+        self.dot_timer = QTimer()
+        self.dot_count = 0
+        self.dot_timer.timeout.connect(self.update_dot_animation)
 
     def _build_ui(self):
         root_layout = QVBoxLayout(self)
@@ -233,6 +245,35 @@ class DevScopeUi(QWidget):
 
         self.tabs.addTab(history_tab, "History")
 
+        download_tab = QWidget()
+        download_layout = QVBoxLayout(download_tab)
+
+        def add_row(label, widget):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            row.addWidget(widget)
+            row.setAlignment(Qt.AlignTop)
+            download_layout.addLayout(row)
+
+        self.tabs.addTab(download_tab, "Download")
+
+        self.download_calyx = QPushButton("Download")
+        self.download_calyx.setToolTip(
+            "Calyx v1.0 (7B Parameters)\n"
+            "Specialized Python assistant based on Qwen2.5-Coder.\n"
+            "Requires a minimum of 8 GB of storage. Requires at least 6 GB of VRAM.\n"
+            "Source: Hosted on Hugging Face (Calyx-Python-Project).\n"
+            "Created and trained by Daniil Ovechkin."
+        )
+        self.download_calyx.clicked.connect(self.start_calyx_download)
+        add_row("Calyx Python 7B (v1.0)", self.download_calyx)
+        self.download_status = QLabel("0% ..//")
+        self.download_status.setAlignment(Qt.AlignRight)
+        self.download_status.setStyleSheet("font-size: 10px; color: gray;")
+        download_layout.addWidget(self.download_status)
+
+        download_layout.addStretch(1)
+
         settings_tab = QWidget()
         settings_layout = QVBoxLayout(settings_tab)
 
@@ -260,8 +301,16 @@ class DevScopeUi(QWidget):
         self.temp_slider.setRange(0, 100)
         self.temp_slider.setValue(DEFAULTS["temperature"])
         self.temp_label = QLabel(f"{DEFAULTS['temperature'] / 100:.2f}")
-        self.temp_slider.valueChanged.connect(
-            lambda v: self.temp_label.setText(f"{v / 100:.2f}")
+        self.temp_slider.valueChanged.connect(lambda v: self.temp_label.setText(f"{v / 100:.2f}"))
+        self.temp_slider.setToolTip(
+            "Controls how random or focused the AI's responses are.\n"
+            "Low temperature is recommended, as low temperature will give precise results.\n"
+            "High temperature makes the AI much more creative and diverse, but isn't recommended."
+        )
+        self.temp_label.setToolTip(
+            "Controls how random or focused the AI's responses are.\n"
+            "Low temperature is recommended, as low temperature will give precise results.\n"
+            "High temperature makes the AI much more creative and diverse, but isn't recommended."
         )
         temp_row = QHBoxLayout()
         temp_row.addWidget(QLabel("Temperature:"))
@@ -270,17 +319,54 @@ class DevScopeUi(QWidget):
         settings_layout.addLayout(temp_row)
 
         self.max_tokens = QSpinBox()
-        self.max_tokens.setRange(100, 4000)
+        self.max_tokens.setRange(128, 128000)
+        self.max_tokens.setSingleStep(100) 
         self.max_tokens.setValue(DEFAULTS["max_tokens"])
-        add_row("Max Response Length:", self.max_tokens)
+        self.max_tokens.setToolTip(
+            "Max tokens limits the length of the AI's response.\n"
+            "Local: High values use more VRAM and are slower.\n"
+            "OpenRouter: High values cost more but allow longer responses.\n"
+            "2000 is a good balance for code generation."
+        )
+        add_row("Max Token Usage:", self.max_tokens)
 
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(DEFAULTS["auto_fallback"])
-        add_row("Auto-Fallback:", self.checkbox)
+        self.auto_fall_back_checkbox = QCheckBox()
+        self.auto_fall_back_checkbox.setChecked(DEFAULTS["auto_fallback"])
+        self.auto_fall_back_checkbox.setToolTip("Enabling this will result in failed OpenRouter AI models to try the next one on the list.")
+        add_row("Auto-Fallback:", self.auto_fall_back_checkbox)
+
+        def check_openrouter_input():
+            if self.open_router_checkbox.isChecked():
+                self.open_router_api_key_input.setEnabled(True)
+                self.open_router_api_key_input.setStyleSheet("")
+            else:
+                self.open_router_api_key_input.setEnabled(False)
+                self.open_router_api_key_input.setStyleSheet("border: 1px solid #874848;")
+
+        self.open_router_checkbox = QCheckBox()
+        self.open_router_checkbox.setChecked(DEFAULTS["openrouter_api"])
+        self.open_router_checkbox.stateChanged.connect(lambda: check_openrouter_input())
+        self.open_router_checkbox.setToolTip(
+            "OpenRouter AI API is used for talking to a large variety of AI models,\n"
+            "but require an OpenRouter API key and an internet connection. \n"
+            "Go to https://openrouter.ai/ to create an API key, it's free."
+        )
+        add_row("OpenRouter API:", self.open_router_checkbox)
+
+        self.open_router_api_key_input = QLineEdit()
+        self.open_router_api_key_input.setText(DEFAULTS["openrouter_api_key"])
+
+        self.open_router_api_key_input.setToolTip("Go to https://openrouter.ai/ to create an API key, it's free.\nNeeds OpenRouter API setting enabled!")
+        add_row("OpenRouter API Key:", self.open_router_api_key_input)
+        check_openrouter_input()
 
         self.default_mode_selector = QComboBox()
         for m in MODE_DEFAULT:
             self.default_mode_selector.addItem(m)
+        self.default_mode_selector.setToolTip(
+            "Edit mode makes the AI model focus on editting code.\n"
+            "Ask mode makes the AI model focus on answering questions."
+        )
         add_row("Mode Default:", self.default_mode_selector)
 
         self.max_files = QSpinBox()
@@ -420,7 +506,9 @@ class DevScopeUi(QWidget):
         self.model_selector.setCurrentText(DEFAULTS["model"])
         self.temp_slider.setValue(DEFAULTS["temperature"])
         self.max_tokens.setValue(DEFAULTS["max_tokens"])
-        self.checkbox.setChecked(DEFAULTS["auto_fallback"])
+        self.auto_fall_back_checkbox.setChecked(DEFAULTS["auto_fallback"])
+        self.open_router_checkbox.setChecked(DEFAULTS["openrouter_api"])
+        self.open_router_api_key_input.setText(DEFAULTS["openrouter_api_key"])
         self.default_mode_selector.setCurrentIndex(0)
         self.max_files.setValue(DEFAULTS["max_files"])
         self.file_types.setText(DEFAULTS["file_types"])
@@ -429,3 +517,28 @@ class DevScopeUi(QWidget):
 
     def markdown_to_html(self, text):
         return markdown.markdown(text, extensions=["fenced_code", "tables"])
+    
+    def update_dot_animation(self):
+        self.dot_count = (self.dot_count + 1) % 4
+        dots = "." * self.dot_count
+        self.download_calyx.setText(f"Downloading{dots}")
+
+
+    def update_progress_text(self, percent, filename):
+        self.download_status.setText(f"Downloading: {filename} ({percent}%)")
+
+    def start_calyx_download(self):
+        self.download_calyx.setEnabled(False)
+        self.dot_timer.start(200)
+        
+        self.download_thread = DownloadThread()    
+        self.download_thread.progress_update.connect(self.update_progress_text)    
+        self.download_thread.finished.connect(self.download_finished)   
+        self.download_thread.start()
+
+    def download_finished(self):
+        self.dot_timer.stop()
+        self.download_calyx.setText("Download Complete")
+        self.download_calyx.setEnabled(True)
+        self.download_status.setText("Calyx Python 7B (v1.0) is ready to use.")
+        AVAILABLE_MODELS.append("Calyx Python 7B")
