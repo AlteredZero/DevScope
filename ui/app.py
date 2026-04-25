@@ -433,7 +433,7 @@ class DevScopeUi(QWidget):
         model = self.model_selector.currentText()
         temperature = self.temp_slider.value() / 100.0
         max_tokens = self.max_tokens.value()
-        auto_fallback = self.checkbox.isChecked()
+        auto_fallback = self.auto_fall_back_checkbox.isChecked()
 
         self.worker = AIWorker(self.folder, prompt, model, temperature, max_tokens, auto_fallback)
         self.worker.finished.connect(self.display_result)
