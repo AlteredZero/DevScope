@@ -272,6 +272,23 @@ class DevScopeUi(QWidget):
         self.download_status.setStyleSheet("font-size: 10px; color: gray;")
         download_layout.addWidget(self.download_status)
 
+        self.download_calyx = QPushButton("Download")
+        self.download_calyx.setToolTip(
+            "Calyx v1.0 Lite (2.5B Parameters)\n"
+            "Specialized Python assistant based on Qwen2.5-Coder.\n"
+            "It is much smaller and faster than the 7B version, but less powerful.\n"
+            "Requires a minimum of 5 GB of storage. Requires at least 3 GB of VRAM.\n"
+            "Source: Hosted on Hugging Face (Calyx-Python-Project).\n"
+            "Created and trained by Daniil Ovechkin.\n"
+            "CURRENTLY UNAVAILABLE, COMING SOON!"
+        )
+        self.download_calyx.clicked.connect(self.start_calyx_download)
+        add_row("Calyx Python 2.5B Lite (v1.0)", self.download_calyx)
+        self.download_status = QLabel("0% ..//")
+        self.download_status.setAlignment(Qt.AlignRight)
+        self.download_status.setStyleSheet("font-size: 10px; color: gray;")
+        download_layout.addWidget(self.download_status)
+
         download_layout.addStretch(1)
 
         settings_tab = QWidget()
