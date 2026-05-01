@@ -1,0 +1,14 @@
+{
+    "theme": "Scope - Default",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "temperature": 10,
+    "max_tokens": 2000,
+    "auto_fallback": true,
+    "openrouter_api": false,
+    "openrouter_api_key": null,
+    "mode": "Edit",
+    "max_files": 10,
+    "file_types": ".py, .js, .ts, .jsx, .tsx, .cpp, .h, .hpp, .c, .cs, .java, .go, .rs, .html, .css, .json, .yaml, .yml, .xml, .lua, .rb, .php, .swift, .kt, .sh, .bat, .ps1, .sql, .ini, .cfg, .toml, .env, .md",
+    "ignore_folders": "",
+    "font_size": 9
+}

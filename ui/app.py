@@ -2,11 +2,18 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTextEdit, QFileDialog, QLabel, QComboBox,
     QTabWidget, QCheckBox, QSlider, QSpinBox,
-    QLineEdit
+    QLineEdit, QDialog
 )
-from PyQt5.QtCore import QObject, pyqtSignal, Qt, QTimer, QThread
+from PyQt5.QtCore import QObject, pyqtSignal, Qt, QTimer, QThread, QPoint
+from PyQt5.QtGui import QPixmap, QPainter, QIcon
 import threading
 import markdown
+from qframelesswindow import FramelessMainWindow, StandardTitleBar
+import os
+import sys
+import datetime
+import json
+from pathlib import Path
 
 AVAILABLE_MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
@@ -16,63 +23,75 @@ AVAILABLE_MODELS = [
 
 THEMES = {
     "Scope - Default": """
-        * { font-family: 'JetBrains Mono'; }
-        QWidget { background-color: #0f1117; color: #c9d1d9; }
+        * { font-family: 'JetBrains Mono'; outline: none; }
+        DevScopeUi { background-color: #0f1117; color: #c9d1d9; border-radius: 8px; }
+        #MainContainer { background-color: #0f1117; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+        #TitleBar { background-color: #161b22; border-bottom: 1px solid #21262d; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        #TitleBar QPushButton { background-color: transparent; border: none; color: #8b949e; font-size: 18px; font-weight: bold; }
+        #TitleBar QPushButton:hover { background-color: #21262d; color: #c9d1d9; }
+        #TitleBar #closeButton:hover { background-color: #D1525F; color: white; border-top-right-radius: 8px; }
         QTabWidget::pane { border: 1px solid #21262d; }
         QTabBar::tab { background: #161b22; color: #8b949e; padding: 6px 16px; border: 1px solid #21262d; }
         QTabBar::tab:selected { background: #0f1117; color: #58a6ff; border-bottom: 2px solid #58a6ff; }
         QPushButton { background-color: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 5px 12px; }
         QPushButton:hover { background-color: #30363d; border-color: #58a6ff; }
-        QPushButton:disabled { color: #484f58; background-color: #161b22; }
         QTextEdit, QLineEdit { background-color: #161b22; border: 1px solid #21262d; color: #c9d1d9; border-radius: 4px; padding: 4px; }
-        QComboBox { background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 4px; }
-        QComboBox::drop-down { border: none; }
-        QComboBox QAbstractItemView { background-color: #161b22; color: #c9d1d9; selection-background-color: #21262d; }
-        QSpinBox { background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 4px; }
+        QComboBox { background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 4px; padding-left: 8px; }
+        QComboBox::drop-down { border: none; width: 0px; }
+        QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
+        QComboBox QAbstractItemView { background-color: #161b22; color: #c9d1d9; selection-background-color: #21262d; border: 1px solid #30363d; }
+        QSpinBox { background-color: #161b22; border: 1px solid #21262d; color: #c9d1d9; border-radius: 4px; padding: 4px; border-right: 12px solid #21262d; }
+        QSpinBox::up-button, QSpinBox::down-button { width: 0px; background: transparent; border: none; }
         QSlider::groove:horizontal { background: #21262d; height: 4px; border-radius: 2px; }
         QSlider::handle:horizontal { background: #58a6ff; width: 14px; height: 14px; border-radius: 7px; margin: -5px 0; }
         QLabel { color: #8b949e; }
-        QCheckBox { color: #c9d1d9; }
         QScrollBar:vertical { background: #161b22; width: 8px; }
         QScrollBar::handle:vertical { background: #30363d; border-radius: 4px; }
     """,
     "Dark": """
-        * { font-family: 'JetBrains Mono'; }
-        QWidget { background-color: #1e1e1e; color: #d4d4d4; }
+        * { font-family: 'JetBrains Mono'; outline: none; }
+        DevScopeUi { background-color: #1e1e1e; color: #d4d4d4; border-radius: 8px; }
+        #MainContainer { background-color: #1e1e1e; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+        #TitleBar { background-color: #252526; border-bottom: 1px solid #3c3c3c; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        #TitleBar QPushButton { background-color: transparent; border: none; color: #d4d4d4; font-size: 18px; font-weight: bold; }
+        #TitleBar QPushButton:hover { background-color: #3c3c3c; }
+        #TitleBar #closeButton:hover { background-color: #D1525F; color: white; border-top-right-radius: 8px; }
         QTabWidget::pane { border: 1px solid #3c3c3c; }
-        QTabBar::tab { background: #2d2d2d; color: #969696; padding: 6px 16px; }
+        QTabBar::tab { background: #2d2d2d; color: #969696; padding: 6px 16px; border: 1px solid #3c3c3c; }
         QTabBar::tab:selected { background: #1e1e1e; color: #ffffff; border-bottom: 2px solid #007acc; }
         QPushButton { background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #3c3c3c; border-radius: 4px; padding: 5px 12px; }
-        QPushButton:hover { background-color: #3c3c3c; }
-        QPushButton:disabled { color: #555555; }
-        QTextEdit, QLineEdit { background-color: #252526; border: 1px solid #3c3c3c; color: #d4d4d4; padding: 4px; }
-        QComboBox { background-color: #2d2d2d; border: 1px solid #3c3c3c; color: #d4d4d4; padding: 4px; }
-        QComboBox QAbstractItemView { background-color: #252526; color: #d4d4d4; }
-        QSpinBox { background-color: #2d2d2d; border: 1px solid #3c3c3c; color: #d4d4d4; padding: 4px; }
-        QSlider::groove:horizontal { background: #3c3c3c; height: 4px; }
+        QTextEdit, QLineEdit { background-color: #252526; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px; }
+        QComboBox { background-color: #2d2d2d; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px; padding-left: 8px; }
+        QComboBox::drop-down { border: none; width: 0px; }
+        QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
+        QSpinBox { background-color: #252526; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px; border-right: 12px solid #3c3c3c; }
+        QSpinBox::up-button, QSpinBox::down-button { width: 0px; background: transparent; border: none; }
+        QSlider::groove:horizontal { background: #3c3c3c; height: 4px; border-radius: 2px; }
         QSlider::handle:horizontal { background: #007acc; width: 14px; height: 14px; border-radius: 7px; margin: -5px 0; }
         QLabel { color: #969696; }
-        QCheckBox { color: #d4d4d4; }
     """,
     "Light": """
-        * { font-family: 'JetBrains Mono'; }
-        QWidget { background-color: #ffffff; color: #24292e; }
+        * { font-family: 'JetBrains Mono'; outline: none; }
+        DevScopeUi { background-color: #ffffff; color: #24292e; border-radius: 8px; border: 1px solid #e1e4e8; }
+        #MainContainer { background-color: #ffffff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+        #TitleBar { background-color: #f6f8fa; border-bottom: 1px solid #e1e4e8; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        #TitleBar QPushButton { background-color: transparent; border: none; color: #586069; font-size: 18px; font-weight: bold; }
+        #TitleBar QPushButton:hover { background-color: #e1e4e8; }
+        #TitleBar #closeButton:hover { background-color: #DF5764; color: white; border-top-right-radius: 8px; }
         QTabWidget::pane { border: 1px solid #e1e4e8; }
         QTabBar::tab { background: #f6f8fa; color: #586069; padding: 6px 16px; border: 1px solid #e1e4e8; }
         QTabBar::tab:selected { background: #ffffff; color: #0366d6; border-bottom: 2px solid #0366d6; }
         QPushButton { background-color: #f6f8fa; color: #24292e; border: 1px solid #e1e4e8; border-radius: 6px; padding: 5px 12px; }
-        QPushButton:hover { background-color: #e1e4e8; }
-        QPushButton:disabled { color: #959da5; }
-        QTextEdit, QLineEdit { background-color: #ffffff; border: 1px solid #e1e4e8; color: #24292e; padding: 4px; }
-        QComboBox { background-color: #f6f8fa; border: 1px solid #e1e4e8; color: #24292e; padding: 4px; }
-        QComboBox QAbstractItemView { background-color: #ffffff; color: #24292e; }
-        QSpinBox { background-color: #f6f8fa; border: 1px solid #e1e4e8; color: #24292e; padding: 4px; }
-        QSlider::groove:horizontal { background: #e1e4e8; height: 4px; }
+        QTextEdit, QLineEdit { background-color: #ffffff; border: 1px solid #e1e4e8; color: #24292e; border-radius: 4px; padding: 4px; }
+        QComboBox { background-color: #f6f8fa; border: 1px solid #e1e4e8; color: #24292e; border-radius: 4px; padding: 4px; padding-left: 8px; }
+        QComboBox::drop-down { border: none; width: 0px; }
+        QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
+        QSpinBox { background-color: #ffffff; border: 1px solid #e1e4e8; color: #24292e; border-radius: 4px; padding: 4px; border-right: 12px solid #e1e4e8; }
+        QSpinBox::up-button, QSpinBox::down-button { width: 0px; background: transparent; border: none; }
+        QSlider::groove:horizontal { background: #e1e4e8; height: 4px; border-radius: 2px; }
         QSlider::handle:horizontal { background: #0366d6; width: 14px; height: 14px; border-radius: 7px; margin: -5px 0; }
         QLabel { color: #586069; }
-        QCheckBox { color: #24292e; }
-    """,
-    "None": "",
+    """
 }
 
 MODE_DEFAULT = ["Edit", "Ask"]
@@ -92,6 +111,56 @@ DEFAULTS = {
     "font_size": 9,
 }
 
+SETTINGS_FILE = Path.cwd() / "settings.json"
+
+def load_settings() -> dict:
+    """Read the JSON file – if it does not exist return the defaults."""
+    if SETTINGS_FILE.is_file():
+        try:
+            with SETTINGS_FILE.open(encoding="utf-8") as f:
+                data = json.load(f)
+            return {k: data.get(k, v) for k, v in DEFAULTS.items()}
+        except Exception:
+            pass
+    return DEFAULTS.copy()
+
+def save_settings(settings: dict) -> None:
+    """Write the dict to disk (pretty-printed)."""
+    with SETTINGS_FILE.open("w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=4, ensure_ascii=False)
+
+class Signaler(QObject):
+    text_written = pyqtSignal(str)
+
+class LogHandler:
+    def __init__(self, signaler_instance):
+        self.signaler = signaler_instance
+
+    def write(self, text):
+        if text:
+            self.signaler.text_written.emit(str(text))
+
+    def flush(self):
+        pass
+
+class LogWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("System Log")
+        self.resize(600, 400)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        
+        layout = QVBoxLayout(self)
+        self.text_display = QTextEdit()
+        self.text_display.setReadOnly(True)
+        self.text_display.setStyleSheet("background-color: #0f1117; color: #c9d1d9; border: 1px solid #21262d;")
+        layout.addWidget(self.text_display)
+
+    def append_text(self, text):
+        self.text_display.moveCursor(self.text_display.textCursor().End)
+        self.text_display.insertPlainText(text)
+        self.text_display.ensureCursorVisible()
 
 class AIWorker(QObject):
     finished = pyqtSignal(str)
@@ -144,30 +213,100 @@ class AIWorker(QObject):
 class DownloadThread(QThread):
     progress_update = pyqtSignal(int, str)
     
-    def run(self):
+    def run_calyx_pro(self):
         filename = "Calyx-v1.0-7B.gguf"
         def callback(completed, total):
             if total > 0:
                 percent = int((completed / total) * 100)
                 self.progress_update.emit(percent, filename)
 
+    def run_calyx_lite(self):
+        filename = "Calyx-v1.0-3B.gguf"
+        def callback(completed, total):
+            if total > 0:
+                percent = int((completed / total) * 100)
+                self.progress_update.emit(percent, filename)
 
 class DevScopeUi(QWidget):
     def __init__(self):
         super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self._old_pos = None
         self.folder = ""
         self.last_response = ""
-        self.font_size = DEFAULTS["font_size"]
+        self._persisted = load_settings()
+        self.font_size = self._persisted.get("font_size", DEFAULTS["font_size"])
         self.setWindowTitle("DevScope")
         self._build_ui()
-        self.apply_theme(DEFAULTS["theme"])
         self.dot_timer = QTimer()
         self.dot_count = 0
         self.dot_timer.timeout.connect(self.update_dot_animation)
+        self.log_window = LogWindow(self)
+        self.signaler = Signaler()
+        self.signaler.text_written.connect(self.log_window.append_text)
+        sys.stdout = LogHandler(self.signaler)
+        sys.stderr = LogHandler(self.signaler)
+        self.apply_global_cursors()
+        self.apply_loaded_settings()
+        
+        print("System initialized.")
 
     def _build_ui(self):
-        root_layout = QVBoxLayout(self)
+        self.resize(500, 800)
 
+        master_layout = QVBoxLayout(self)
+        master_layout.setContentsMargins(0, 0, 0, 0)
+        master_layout.setSpacing(0)
+
+        self.title_bar = QWidget()
+        self.title_bar.setFixedHeight(40)
+        self.title_bar.setObjectName("TitleBar")
+        
+        title_layout = QHBoxLayout(self.title_bar)
+        title_layout.setContentsMargins(10, 0, 0, 0)
+
+        self.logo_label = QLabel()
+        if os.path.exists("./assets/DevScopeIcon.png"):
+            logo_pixmap = QPixmap("./assets/DevScopeIcon.png").scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.logo_label.setPixmap(logo_pixmap)
+        else:
+            self.logo_label.setText("")
+        
+        title_layout.addWidget(self.logo_label)
+
+        self.title_label = QLabel("DevScope")
+        self.title_label.setStyleSheet("font-weight: bold; margin-left: 5px;")
+        title_layout.addWidget(self.title_label)
+        
+        title_layout.addStretch()
+
+        self.btn_min = QPushButton("—")
+        self.btn_min.setFixedSize(45, 40)
+        self.btn_min.clicked.connect(self.showMinimized)
+        
+        self.btn_max = QPushButton("▢")
+        self.btn_max.setFixedSize(45, 40)
+        self.btn_max.clicked.connect(self.toggle_maximize)
+        
+        self.btn_close = QPushButton("✕")
+        self.btn_close.setFixedSize(45, 40)
+        self.btn_close.setObjectName("closeButton")
+        self.btn_close.clicked.connect(self.close)
+
+        title_layout.addWidget(self.btn_min)
+        title_layout.addWidget(self.btn_max)
+        title_layout.addWidget(self.btn_close)
+        
+        master_layout.addWidget(self.title_bar)
+
+        self.main_container = QWidget()
+        self.main_container.setObjectName("MainContainer")
+        master_layout.addWidget(self.main_container)
+        
+        root_layout = QVBoxLayout(self.main_container)
+        root_layout.setContentsMargins(15, 15, 15, 15)
+        root_layout.setSpacing(10)
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("Model:"))
         self.model_selector = QComboBox()
@@ -257,37 +396,37 @@ class DevScopeUi(QWidget):
 
         self.tabs.addTab(download_tab, "Download")
 
-        self.download_calyx = QPushButton("Download")
-        self.download_calyx.setToolTip(
-            "Calyx v1.0 (7B Parameters)\n"
-            "Specialized Python assistant based on Qwen2.5-Coder.\n"
-            "Requires a minimum of 8 GB of storage. Requires at least 6 GB of VRAM.\n"
+        self.download_calyx_pro = QPushButton("Download")
+        self.download_calyx_pro.setToolTip(
+            "Calyx Python Pro (v1.0)\n"
+            "Specialized Python assistant based on Qwen2.5-Coder, it has 7B parameters.\n"
+            "Requires a minimum of 6 GB of storage. Requires at least 8 GB of VRAM.\n"
             "Source: Hosted on Hugging Face (Calyx-Python-Project).\n"
             "Created and trained by Daniil Ovechkin."
         )
-        self.download_calyx.clicked.connect(self.start_calyx_download)
-        add_row("Calyx Python 7B (v1.0)", self.download_calyx)
-        self.download_status = QLabel("0% ..//")
-        self.download_status.setAlignment(Qt.AlignRight)
-        self.download_status.setStyleSheet("font-size: 10px; color: gray;")
-        download_layout.addWidget(self.download_status)
+        self.download_calyx_pro.clicked.connect(self.start_calyx_pro_download)
+        add_row("Calyx Python Pro (v1.0)", self.download_calyx_pro)
+        self.download_status_calyx_pro = QLabel("0% ..//")
+        self.download_status_calyx_pro.setAlignment(Qt.AlignRight)
+        self.download_status_calyx_pro.setStyleSheet("font-size: 10px; color: gray;")
+        download_layout.addWidget(self.download_status_calyx_pro)
 
-        self.download_calyx = QPushButton("Download")
-        self.download_calyx.setToolTip(
-            "Calyx v1.0 Lite (2.5B Parameters)\n"
-            "Specialized Python assistant based on Qwen2.5-Coder.\n"
+        self.download_calyx_lite = QPushButton("Download")
+        self.download_calyx_lite.setToolTip(
+            "Calyx Python Lite (v1.0)\n"
+            "Specialized Python assistant based on Qwen2.5-Coder, it has 3B parameters.\n"
             "It is much smaller and faster than the 7B version, but less powerful.\n"
-            "Requires a minimum of 5 GB of storage. Requires at least 3 GB of VRAM.\n"
+            "Requires a minimum of 3 GB of storage. Requires at least 4 GB of VRAM.\n"
             "Source: Hosted on Hugging Face (Calyx-Python-Project).\n"
             "Created and trained by Daniil Ovechkin.\n"
             "CURRENTLY UNAVAILABLE, COMING SOON!"
         )
-        self.download_calyx.clicked.connect(self.start_calyx_download)
-        add_row("Calyx Python 2.5B Lite (v1.0)", self.download_calyx)
-        self.download_status = QLabel("0% ..//")
-        self.download_status.setAlignment(Qt.AlignRight)
-        self.download_status.setStyleSheet("font-size: 10px; color: gray;")
-        download_layout.addWidget(self.download_status)
+        self.download_calyx_lite.clicked.connect(self.start_calyx_lite_download)
+        add_row("Calyx Python Lite (v1.0)", self.download_calyx_lite)
+        self.download_status_calyx_lite = QLabel("0% ..//")
+        self.download_status_calyx_lite.setAlignment(Qt.AlignRight)
+        self.download_status_calyx_lite.setStyleSheet("font-size: 10px; color: gray;")
+        download_layout.addWidget(self.download_status_calyx_lite)
 
         download_layout.addStretch(1)
 
@@ -358,7 +497,7 @@ class DevScopeUi(QWidget):
                 self.open_router_api_key_input.setStyleSheet("")
             else:
                 self.open_router_api_key_input.setEnabled(False)
-                self.open_router_api_key_input.setStyleSheet("border: 1px solid #874848;")
+                self.open_router_api_key_input.setStyleSheet("border: 1px solid #DF5764;")
 
         self.open_router_checkbox = QCheckBox()
         self.open_router_checkbox.setChecked(DEFAULTS["openrouter_api"])
@@ -406,6 +545,12 @@ class DevScopeUi(QWidget):
         self.font_size_spin.valueChanged.connect(self.change_font)
         add_row("Font Size:", self.font_size_spin)
 
+        log_row = QHBoxLayout()
+        self.button_log = QPushButton("Open Log")
+        self.button_log.clicked.connect(self.open_log)
+        log_row.addWidget(self.button_log)
+        settings_layout.addLayout(log_row)
+
         reset_row = QHBoxLayout()
         self.button_reset = QPushButton("Reset Defaults")
         self.button_reset.clicked.connect(self.reset_default_settings)
@@ -419,6 +564,39 @@ class DevScopeUi(QWidget):
         settings_layout.addWidget(self.settings_display)
 
         self.tabs.addTab(settings_tab, "Settings")
+
+        self._connect_setting_signals()
+
+    def paintEvent(self, event):
+        from PyQt5.QtWidgets import QStyleOption, QStyle
+        from PyQt5.QtGui import QPainter
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PE_Widget, opt, p, self)
+    
+    def toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+            self.btn_max.setText("▢")
+            self.setStyleSheet(self.styleSheet().replace("border-radius: 0px;", "border-radius: 8px;"))
+        else:
+            self.showMaximized()
+            self.btn_max.setText("❐")
+            self.setStyleSheet(self.styleSheet().replace("border-radius: 8px;", "border-radius: 0px;"))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._old_pos = event.globalPos()
+
+    def mouseMoveEvent(self, event):
+        if self._old_pos is not None:
+            delta = QPoint(event.globalPos() - self._old_pos)
+            self.move(self.x() + delta.x(), self.y() + delta.y())
+            self._old_pos = event.globalPos()
+
+    def mouseReleaseEvent(self, event):
+        self._old_pos = None
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
@@ -525,37 +703,143 @@ class DevScopeUi(QWidget):
         self.max_tokens.setValue(DEFAULTS["max_tokens"])
         self.auto_fall_back_checkbox.setChecked(DEFAULTS["auto_fallback"])
         self.open_router_checkbox.setChecked(DEFAULTS["openrouter_api"])
-        self.open_router_api_key_input.setText(DEFAULTS["openrouter_api_key"])
+        self.open_router_api_key_input.setText(DEFAULTS["openrouter_api_key"] or "")
         self.default_mode_selector.setCurrentIndex(0)
         self.max_files.setValue(DEFAULTS["max_files"])
         self.file_types.setText(DEFAULTS["file_types"])
         self.ignored_files.setText(DEFAULTS["ignore_folders"])
         self.font_size_spin.setValue(DEFAULTS["font_size"])
+        save_settings(DEFAULTS.copy())
+
+    def open_log(self):
+
+        if self.log_window.isVisible():
+            self.log_window.activateWindow()
+        else:
+            self.log_window.show()
 
     def markdown_to_html(self, text):
         return markdown.markdown(text, extensions=["fenced_code", "tables"])
-    
+
     def update_dot_animation(self):
         self.dot_count = (self.dot_count + 1) % 4
         dots = "." * self.dot_count
         self.download_calyx.setText(f"Downloading{dots}")
 
+    def update_progress_text_calyx_pro(self, percent, filename):
+        self.download_status_calyx_pro.setText(f"Downloading: {filename} ({percent}%)")
+        print(f"Download progress: {percent}% for {filename}")
 
-    def update_progress_text(self, percent, filename):
-        self.download_status.setText(f"Downloading: {filename} ({percent}%)")
+    def update_progress_text_calyx_lite(self, percent, filename):
+        self.download_status_calyx_lite.setText(f"Downloading: {filename} ({percent}%)")
+        print(f"Download progress: {percent}% for {filename}")
 
-    def start_calyx_download(self):
-        self.download_calyx.setEnabled(False)
+    def start_calyx_pro_download(self):
+        print("Starting Calyx Pro download...")
+        self.download_calyx_pro.setEnabled(False)
         self.dot_timer.start(200)
         
-        self.download_thread = DownloadThread()    
-        self.download_thread.progress_update.connect(self.update_progress_text)    
-        self.download_thread.finished.connect(self.download_finished)   
+        self.download_thread = DownloadThread()
+        self.download_thread.run = self.download_thread.run_calyx_pro
+        self.download_thread.progress_update.connect(self.update_progress_text_calyx_pro)    
+        self.download_thread.finished.connect(self.download_finished_calyx_pro)   
         self.download_thread.start()
 
-    def download_finished(self):
+    def start_calyx_lite_download(self):
+        self.download_calyx_lite.setEnabled(False)
+        self.dot_timer.start(200)
+        
+        self.download_thread = DownloadThread()   
+        self.download_thread.run = self.download_thread.run_calyx_lite
+        self.download_thread.progress_update.connect(self.update_progress_text_calyx_lite)    
+        self.download_thread.finished.connect(self.download_finished_calyx_lite)   
+        self.download_thread.start()
+
+    def download_finished_calyx_pro(self):
         self.dot_timer.stop()
-        self.download_calyx.setText("Download Complete")
-        self.download_calyx.setEnabled(True)
-        self.download_status.setText("Calyx Python 7B (v1.0) is ready to use.")
-        AVAILABLE_MODELS.append("Calyx Python 7B")
+        self.download_calyx_pro.setText("Download Complete")
+        self.download_calyx_pro.setEnabled(True)
+        self.download_status_calyx_pro.setText("Calyx Python Pro (v1.0) is ready to use.")
+        AVAILABLE_MODELS.append("Calyx Python Pro")
+        print("Calyx Pro download completed and ready to use.")
+
+    def download_finished_calyx_lite(self):
+        self.dot_timer.stop()
+        self.download_calyx_lite.setText("Download Complete")
+        self.download_calyx_lite.setEnabled(True)
+        self.download_status_calyx_lite.setText("Calyx Python Lite (v1.0) is ready to use.")
+        AVAILABLE_MODELS.append("Calyx Python Lite")
+        print("Calyx Lite download completed and ready to use.")
+
+    def apply_global_cursors(self):
+        for button in self.findChildren(QPushButton):
+            button.setCursor(Qt.PointingHandCursor)
+        
+        for combo in self.findChildren(QComboBox):
+            combo.setCursor(Qt.PointingHandCursor)
+
+    def apply_loaded_settings(self):
+        for widget in [self.theme_selector, self.font_size_spin,
+                    self.default_model_selector, self.model_selector,
+                    self.temp_slider, self.max_tokens,
+                    self.auto_fall_back_checkbox, self.open_router_checkbox,
+                    self.open_router_api_key_input, self.default_mode_selector,
+                    self.max_files, self.file_types, self.ignored_files]:
+            widget.blockSignals(True)
+
+        self.theme_selector.setCurrentText(self._persisted.get("theme", DEFAULTS["theme"]))
+        self.font_size_spin.setValue(self._persisted.get("font_size", DEFAULTS["font_size"]))
+        self.font_size = self._persisted.get("font_size", DEFAULTS["font_size"])
+        self.default_model_selector.setCurrentText(self._persisted.get("model", DEFAULTS["model"]))
+        self.model_selector.setCurrentText(self._persisted.get("model", DEFAULTS["model"]))
+        self.temp_slider.setValue(self._persisted.get("temperature", DEFAULTS["temperature"]))
+        self.max_tokens.setValue(self._persisted.get("max_tokens", DEFAULTS["max_tokens"]))
+        self.auto_fall_back_checkbox.setChecked(self._persisted.get("auto_fallback", DEFAULTS["auto_fallback"]))
+        self.open_router_checkbox.setChecked(self._persisted.get("openrouter_api", DEFAULTS["openrouter_api"]))
+        self.open_router_api_key_input.setText(self._persisted.get("openrouter_api_key", DEFAULTS["openrouter_api_key"]) or "")
+        self.default_mode_selector.setCurrentText(self._persisted.get("mode", DEFAULTS["mode"]))
+        self.max_files.setValue(self._persisted.get("max_files", DEFAULTS["max_files"]))
+        self.file_types.setText(self._persisted.get("file_types", DEFAULTS["file_types"]))
+        self.ignored_files.setText(self._persisted.get("ignore_folders", DEFAULTS["ignore_folders"]))
+
+        for widget in [self.theme_selector, self.font_size_spin,
+                    self.default_model_selector, self.model_selector,
+                    self.temp_slider, self.max_tokens,
+                    self.auto_fall_back_checkbox, self.open_router_checkbox,
+                    self.open_router_api_key_input, self.default_mode_selector,
+                    self.max_files, self.file_types, self.ignored_files]:
+            widget.blockSignals(False)
+
+        self.apply_theme(self._persisted.get("theme", DEFAULTS["theme"]))
+
+    def _store_current_settings(self):
+        cur = {
+            "theme": self.theme_selector.currentText(),
+            "model": self.model_selector.currentText(),
+            "temperature": self.temp_slider.value(),
+            "max_tokens": self.max_tokens.value(),
+            "auto_fallback": self.auto_fall_back_checkbox.isChecked(),
+            "openrouter_api": self.open_router_checkbox.isChecked(),
+            "openrouter_api_key": self.open_router_api_key_input.text() or None,
+            "mode": self.default_mode_selector.currentText(),
+            "max_files": self.max_files.value(),
+            "file_types": self.file_types.text(),
+            "ignore_folders": self.ignored_files.text(),
+            "font_size": self.font_size_spin.value(),
+        }
+        save_settings(cur)
+
+    def _connect_setting_signals(self):
+        self.theme_selector.currentTextChanged.connect(self._store_current_settings)
+        self.default_model_selector.currentTextChanged.connect(self._store_current_settings)
+        self.model_selector.currentTextChanged.connect(self._store_current_settings)
+        self.temp_slider.valueChanged.connect(self._store_current_settings)
+        self.max_tokens.valueChanged.connect(self._store_current_settings)
+        self.auto_fall_back_checkbox.stateChanged.connect(self._store_current_settings)
+        self.open_router_checkbox.stateChanged.connect(self._store_current_settings)
+        self.open_router_api_key_input.textChanged.connect(self._store_current_settings)
+        self.default_mode_selector.currentTextChanged.connect(self._store_current_settings)
+        self.max_files.valueChanged.connect(self._store_current_settings)
+        self.file_types.textChanged.connect(self._store_current_settings)
+        self.ignored_files.textChanged.connect(self._store_current_settings)
+        self.font_size_spin.valueChanged.connect(self._store_current_settings)
